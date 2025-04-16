@@ -9,7 +9,7 @@ del_x = 0.1
 n = 100
 r_w = 0.10
 r_out = 100.0
-Peclet = 10
+Peclet = 5
 gamma = 0.1
 
 T_low = 0
