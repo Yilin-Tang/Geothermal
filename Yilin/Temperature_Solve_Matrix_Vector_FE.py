@@ -7,23 +7,31 @@ import matplotlib.animation as animation
 from matplotlib import rcParams
 import os
 
-# parameters
+# non-dimensional parameters
 del_x = 0.1            # spatial step
-n = 200                # total grid points
-r_w = 0.10              # m radius lower part of cilinder
-r_out = 100.0           # m some distance away from the cilinder
+r_w = 1              # radius lower part of cilinder
+r_out = 6           # some distance away from the cilinder
+n = int((r_out - r_w) / del_x)                # total grid points
 Peclet = 4.2
 gamma = 0.1
-
 T_low = 0
 T_high = 1
 del_t = 0.0001        # time step
-ITER = 500000        # number of time steps
-
+ITER = 2000000        # number of time steps
 final_time= ITER * del_t
-print(f"Final time: {final_time:.2f} seconds")
-# grid and initial Condition
 r_array = np.linspace(r_w, r_out, n)
+
+# dimensional parameter (p for physics)
+Tp_high = 80
+Tp_low = 20
+rp_w = 0.05
+rp_out = rp_w * r_out
+rp_array = rp_w * r_array
+up_inj = 0.05
+final_time_p = rp_w / up_inj * ITER * del_t
+print(f"Final time: {final_time:.2f} seconds")
+
+# grid and initial Condition
 T = T_high * np.ones(n)
 T[0] = T_low
 
@@ -41,7 +49,8 @@ upper_diag = a_array[1:-2] + b_array[1:-2] + c_array[1:-2]  # length = n_interio
 
 A = diags([lower_diag, main_diag, upper_diag], offsets=[-1, 0, 1], format='csc')
 
-history = [T.copy()]
+history = [(Tp_high - Tp_low) * T.copy() +Tp_low]
+
 for it in range(ITER):
     T[0] = T_low         # enforce inner Dirichlet BC
     T[-1] = T[-2]        # enforce outer Neumann BC
@@ -53,15 +62,23 @@ for it in range(ITER):
     T_interior_new[-1] += (a_array[-2] + b_array[-2] + c_array[-2]) * T[-1]
 
     T[1:-1] = T_interior_new
+    
     # only record every now and then
     if it % (ITER // 100) == 0:
-        history.append(T.copy())
+        T_converted = (Tp_high - Tp_low) * T +Tp_low
+
+        # history.append(T.copy())
+
+        history.append(T_converted.copy())
 
 history = np.array(history)
 
+print(f"Actual Final time: {final_time_p:.2f} seconds")
+r_array = rp_w * r_array
+
 # plotting
 plt.figure(figsize=(10,6))
-plt.plot(r_array, T, label='Final Temperature')
+plt.plot(r_array, history[-1], label='Final Temperature')
 plt.xlabel('Radial Distance r')
 plt.ylabel('Temperature')
 plt.title('Temperature Distribution (Final State)')
@@ -71,7 +88,7 @@ plt.show()
 
 T_steady = 1 - (r_w / r_array) ** (gamma * Peclet)
 
-plt.plot(r_array, T, label="Numerical Final T")
+plt.plot(r_array, history[-1], label="Numerical Final T")
 plt.plot(r_array, T_steady, '--', label="Analytical Steady-State", alpha=0.8)
 plt.legend()
 plt.xlabel("r")
@@ -79,7 +96,6 @@ plt.ylabel("T")
 plt.title("Numerical vs. Analytical Steady-State")
 plt.grid(True)
 plt.show()
-
 
 
 
@@ -106,8 +122,8 @@ plt.show()
 # Set up figure
 fig, ax = plt.subplots(figsize=(10, 6))
 line, = ax.plot([], [], lw=2)
-ax.set_xlim(r_w, r_out)
-ax.set_ylim(T_low, T_high + 0.1)
+ax.set_xlim(rp_w, rp_out)
+ax.set_ylim(Tp_low, Tp_high + 0.1)
 ax.set_xlabel('Radial Distance r')
 ax.set_ylabel('Temperature')
 ax.set_title('Temperature Evolution Over Time')
