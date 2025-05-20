@@ -9,12 +9,18 @@ import os
 
 phi = 0.15 # porosity
 D = 1.5e-9 # diffusion coefficient
-Peclet = 4.2
-gamma = 1.67
-T_low = 20
-rp_w = 0.05
-up_inj = 0.05
-
+c_w = 4.18e3
+rho_w = 1000
+c_s = 0.8e3
+rho_s = 2600
+r_w = 0.05
+r_out = 5
+u_inj = 0.05
+alpha = 6.8e-7
+#Peclet = (u_inj * r_w) / alpha
+#gamma = c_w * rho_w / (c_w * rho_w * phi + c_s * rho_s * (1 - phi))
+Peclet = 4.6
+gamma = 1.6
 # reaction parameters
 R = 8.31446261815324 # universal gas constant
 A1 = 3.55e3
@@ -24,8 +30,8 @@ A4 = -1.41e3
 A5 = 5.08e6
 A6 = -4.55e-4
 A = np.ones(4)*4.65e-2 # Arrhenius pre-exponential factor
-Ea = np.ones(4)*34000
-eta0 = 2.0
+#Ea = np.ones(4)*340
+#eta0 = 2.0
 theta0 = 0.5
 v = np.ones(4)*1.0
 SA = np.ones(4)*1.0
@@ -36,8 +42,16 @@ IAP[1] = act[0]**2 * act[3] # Na2SO4
 IAP[2] = act[2] * act[1]**2 # SrCl2
 IAP[3] = act[2] * act[3] # SrSO4
 
-C0 = np.array([1.832e-1, 3.912e-3, 1.946e-4, 7.978e-2]) # Na, Cl, Sr, SO4
-C_inj = np.array([1.84e-1, 4.0e-3, 1.0e-2, 1.0e-1])
+#C0 = np.array([1.832e-1, 3.912e-3, 1.946e-4, 7.978e-2]) # Na, Cl, Sr, SO4
+#C_inj = np.array([1.84e-1, 4.0e-3, 1.0e-2, 1.0e-1])
+C0 = np.array([1.946e-4]) #Sr, SO4
+C_inj =  np.array([1.0e-2])
+
+def simplified_reaction(C, T):
+   S = np.zeros(C.shape)
+   K_diss = 4.8e-7#A[0] * np.exp(-Ea[0]/(R*T))
+   S[0,:] = SA[0] * K_diss * (C/C0[0] - 1.0)
+   return S
 
 def reaction(C, T):
     num_species = C.shape[0]
@@ -84,7 +98,7 @@ def solve_concentration_equation(r0, r1, delta_r, time, delta_t, num_species, T_
 
     Ca_array = delta_t*D / (phi * r * delta_r)         # appears in the C[i+1] term
     Cb_array = delta_t*D / (phi * delta_r**2) * np.ones(Nr + 1)      # appears in the C[i-1] term
-    Cc_array = -rp_w*up_inj / phi * delta_t / (r * delta_r)            # additional term for C[i+1]
+    Cc_array = -r_w*u_inj / phi * delta_t / (r * delta_r)            # additional term for C[i+1]
 
     Cmain_diag = 1 + Ca_array[1:-1] - 2 * Cb_array[1:-1] + Cc_array[1:-1]
     Clower_diag = -Ca_array[2:-1] + Cb_array[2:-1] - Cc_array[2:-1]                     # length = n_interior - 1
@@ -100,8 +114,8 @@ def solve_concentration_equation(r0, r1, delta_r, time, delta_t, num_species, T_
         C[:, -1] = C[:, -2]        # enforce outer Neumann BC
         C_interior = C[:, 1:-1].copy()
         T_interior = T[1:-1].copy()
-        C_interior_new = np.array([CA @ C_interior[i, :] for i in range(num_species)]) - delta_t * reaction(C_interior, T_interior) 
-        React = reaction(C_interior, T_interior)
+        C_interior_new = np.array([CA @ C_interior[i, :] for i in range(num_species)]) - delta_t * simplified_reaction(C_interior, T_interior) 
+        React = simplified_reaction(C_interior, T_interior)
         # add boundary contributions:
         C_interior_new[:, 0] += (-Ca_array[1] + Cb_array[1] - Cc_array[1]) * C[:, 0]
         C_interior_new[:, -1] += (Cb_array[-2]) * C[:, -1]
@@ -128,15 +142,14 @@ def solve_concentration_equation(r0, r1, delta_r, time, delta_t, num_species, T_
 Tp_high = 80
 Tp_low = 20
 
-rp_out = 5
 delta_r = 0.1
-delta_t = 1e-2
+delta_t = 0.005
 
-ITER = 10000
+ITER = 400000
 final_time_p = ITER * delta_t
 print(f"Final time: {final_time_p:.2f} seconds")
-r, t, T, C, T_history, C_history = solve_concentration_equation(rp_w, rp_out, delta_r, final_time_p, delta_t, 4, Tp_high, Tp_low, C0, C_inj)
-
+r, t, T, C, T_history, C_history = solve_concentration_equation(r_w, r_out, delta_r, final_time_p, delta_t, 1, Tp_high, Tp_low, C0, C_inj)
+"""
 plt.figure(figsize=(10,6))
 plt.plot(r, T_history[-1], label='Final Temperature')
 plt.xlabel('Radial Distance r')
@@ -145,22 +158,25 @@ plt.title('Temperature Distribution (Final State)')
 plt.legend()
 plt.grid(True)
 plt.show()
-
+"""
+num_line = 7
 plt.figure(figsize=(10,6))
-for i in range(4):
-    plt.plot(r, C_history[-1][i,:], label=f'Line {i+1}') 
+for i in range(1):
+    for j in range(num_line):
+        plt.plot(r, C_history[int(len(C_history) / num_line) * j][i,:], label=f'timeframe {j+1}') 
 
 plt.xlabel('Radial Distance r')
 plt.ylabel('Concentration')
-plt.title('Concentration Distribution (Final State)')
+plt.title('Concentration Distribution (Different Time)')
 plt.legend()
 plt.grid(True)
 plt.show()
 
+
 fig, ax = plt.subplots(figsize=(10, 6))
-lines = [ax.plot([], [], label=f'Line {j+1}')[0] for j in range(4)]
+lines = [ax.plot([], [], label=f'Line {j+1}')[0] for j in range(1)]
 ax.set_xlim(r.min(), r.max())
-ax.set_ylim(0, 0.2)
+ax.set_ylim(0, 0.01)
 ax.set_xlabel('Radial Distance r')
 ax.set_ylabel('Concentration')
 ax.set_title('Concentration Evolution Over Time')
